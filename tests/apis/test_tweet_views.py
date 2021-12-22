@@ -1,22 +1,34 @@
 from flask_testing import TestCase
-from app import create_app
+from app import create_app, db
 from app.models import Tweet
-from app.db import tweet_repository
+
 
 class TestTweetViews(TestCase):
     def create_app(self):
         app = create_app()
         app.config['TESTING'] = True
+        #pour creer une BD de test que nous allons reinitialiser a chaque fois
+        app.config['SQLALCHEMY_DATABASE_URI'] = f"{app.config['SQLALCHEMY_DATABASE_URI']}_test"
         return app
 
     def setUp(self):
-        tweet_repository.clear() # Upgrade the TweetRepository.__clear() method to public!
+        #recreation de la base des données test
+        db.create_all()
+
+    def tearDown(self):
+        #destruction des toutes les contenus de la DB après chaque test
+        db.session.remove()
+        db.drop_all()
 
     def test_read_many_tweets(self):
-        first_tweet = Tweet('First tweet')
-        tweet_repository.add(first_tweet)
-        second_tweet = Tweet('Second tweet')
-        tweet_repository.add(second_tweet)
+        first_tweet = Tweet()
+        first_tweet.text = 'First tweet'
+        db.session.add(first_tweet)
+        second_tweet = Tweet()
+        second_tweet.text = 'Second tweet'
+        db.session.add(second_tweet)
+
+        db.session.commit()
 
         response = self.client.get('/tweets')
         response_tweets = response.json
@@ -36,8 +48,11 @@ class TestTweetViews(TestCase):
         self.assertIsNotNone(response_second_tweet['created_at'])
 
     def test_read_one_tweet(self):
-        first_tweet = Tweet('First tweet')
-        tweet_repository.add(first_tweet)
+        first_tweet = Tweet()
+        first_tweet.text = 'First tweet'
+        db.session.add(first_tweet)
+        db.session.commit()
+        
         response = self.client.get('/tweets/1')
         response_tweet = response.json
         print(response_tweet)
@@ -57,25 +72,32 @@ class TestTweetViews(TestCase):
         self.assertIsNotNone(created_tweet['created_at'])
 
     def test_update_one_tweet(self):
-        tweet_to_update = Tweet('Tweet to update')
-        tweet_repository.add(tweet_to_update)
-        response = self.client.patch('/tweets/1', json={'text': 'New text'})
+        first_tweet = Tweet()
+        first_tweet.text = 'First tweet'
+        db.session.add(first_tweet)
+        db.session.commit()
+
+        response = self.client.patch('/tweets/'+str(first_tweet.id), json={'text': 'New text'})
 
         self.assertEqual(response.status_code, 204)
 
         # We use direct access to database to validate our operation
         # Database return Tweet instance, not json converted to a dict
-        updated_tweet = tweet_repository.get(1)
-        self.assertEqual(updated_tweet.id, 1)
+        updated_tweet = db.session.query(Tweet).get(first_tweet.id)
+        self.assertEqual(updated_tweet.id, first_tweet.id)
         self.assertEqual(updated_tweet.text, 'New text')
         self.assertIsNotNone(updated_tweet.created_at)
 
     def test_delete_one_tweet(self):
-        tweet_to_delete = Tweet('A tweet')
-        tweet_repository.add(tweet_to_delete)
-        response = self.client.delete('/tweets/1')
+        first_tweet = Tweet()
+        first_tweet.text = 'First tweet'
+        db.session.add(first_tweet)
+        db.session.commit()
+
+      
+        response = self.client.delete('/tweets/'+str(first_tweet.id))
 
         self.assertEqual(response.status_code, 204)
 
         # We use direct access to database to validate our operation
-        self.assertIsNone(tweet_repository.get(1))
+        self.assertIsNone(db.session.query(Tweet).get(first_tweet.id))
