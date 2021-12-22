@@ -19,6 +19,8 @@ def create_app():
 
     app.config['ERROR_404_HELP'] = False
 
- 
+    @app.route('/hello')
+    def hello():
+        return "Goodbye World!"
 
     return app
